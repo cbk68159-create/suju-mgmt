@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>수주 · 기성 · 수주잔고 관리</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff; --bg2: #f5f5f3; --bg3: #efefec;
+    --text: #1a1a1a; --text2: #6b6b66; --text3: #9e9e99;
+    --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.22);
+    --blue: #185FA5; --blue-bg: #E6F1FB;
+    --green: #3B6D11; --green-bg: #EAF3DE;
+    --amber: #854F0B; --amber-bg: #FAEEDA;
+    --red: #A32D2D; --red-bg: #FCEBEB;
+    --radius: 8px; --radius-lg: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a; --bg2: #252522; --bg3: #2e2e2b;
+      --text: #f0f0ec; --text2: #a0a09a; --text3: #6a6a64;
+      --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.2);
+      --blue: #85B7EB; --blue-bg: #042C53;
+      --green: #97C459; --green-bg: #173404;
+      --amber: #EF9F27; --amber-bg: #412402;
+      --red: #F09595; --red-bg: #501313;
+    }
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg3); color: var(--text); font-size: 14px; line-height: 1.6; min-height: 100vh; }
+  .app { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 18px; font-weight: 500; margin-bottom: 20px; color: var(--text); }
+  .tab-bar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .tab { padding: 8px 18px; font-size: 14px; cursor: pointer; border: none; background: none; color: var(--text2); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s; }
+  .tab.active { color: var(--text); border-bottom-color: var(--text); font-weight: 500; }
+  .tab:hover { color: var(--text); }
+  .section { display: none; }
+  .section.active { display: block; }
+  .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .metric { background: var(--bg2); border-radius: var(--radius); padding: 14px 16px; }
+  .metric-label { font-size: 11px; color: var(--text2); margin-bottom: 6px; letter-spacing: .02em; }
+  .metric-value { font-size: 22px; font-weight: 500; }
+  .metric-value.blue { color: var(--blue); }
+  .metric-value.green { color: var(--green); }
+  .metric-value.amber { color: var(--amber); }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 16px; }
+  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .card-title { font-size: 14px; font-weight: 500; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
+  .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 10px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 12px; color: var(--text2); }
+  input, select {
+    width: 100%; font-size: 13px; padding: 7px 10px;
+    border: 1px solid var(--border2); border-radius: var(--radius);
+    background: var(--bg); color: var(--text); outline: none;
+    transition: border-color .15s;
+  }
+  input:focus, select:focus { border-color: var(--blue); }
+  .btn {
+    padding: 7px 16px; font-size: 13px; border: 1px solid var(--border2);
+    border-radius: var(--radius); cursor: pointer; background: var(--bg);
+    color: var(--text); transition: background .15s;
+  }
+  .btn:hover { background: var(--bg2); }
+  .btn-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .btn-primary:hover { opacity: .85; }
+  .btn-sm { padding: 4px 12px; font-size: 12px; }
+  .btn-export { color: var(--green); border-color: var(--green-bg); background: var(--green-bg); }
+  .btn-export:hover { opacity: .8; }
+  .btn-del { color: var(--red); border: none; background: none; padding: 3px 8px; font-size: 12px; cursor: pointer; border-radius: var(--radius); }
+  .btn-del:hover { background: var(--red-bg); }
+  .btn-row { display: flex; gap: 8px; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+  th { font-size: 11px; font-weight: 500; color: var(--text2); text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 8px 8px; border-bottom: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tr.total-row td { font-weight: 500; background: var(--bg2); }
+  .tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 99px; }
+  .tag-blue { background: var(--blue-bg); color: var(--blue); }
+  .empty { text-align: center; color: var(--text3); font-size: 13px; padding: 32px; }
+  .ratio-bar { height: 5px; background: var(--bg3); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  .ratio-fill { height: 100%; border-radius: 3px; background: var(--blue); }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>수주 · 기성 · 수주잔고 관리</h1>
+  <div class="tab-bar">
+    <button class="tab active" onclick="switchTab('dashboard')">현황</button>
+    <button class="tab" onclick="switchTab('projects')">수주 관리</button>
+    <button class="tab" onclick="switchTab('giseong')">기성 관리</button>
+  </div>
+
+  <!-- 현황 -->
+  <div id="tab-dashboard" class="section active">
+    <div class="metric-grid" id="metrics"></div>
+    <div class="two-col">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">월별 수주 현황</span>
+          <button class="btn btn-export btn-sm" onclick="exportMonthly('suju')">엑셀 ↓</button>
+        </div>
+        <div id="monthly-suju-wrap"></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">월별 기성 현황</span>
+          <button class="btn btn-export btn-sm" onclick="exportMonthly('giseong')">엑셀 ↓</button>
+        </div>
+        <div id="monthly-giseong-wrap"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">프로젝트별 수주잔고</span>
+        <button class="btn btn-export btn-sm" onclick="exportBalance()">엑셀 ↓</button>
+      </div>
+      <div id="balance-table-wrap"></div>
+    </div>
+  </div>
+
+  <!-- 수주 관리 -->
+  <div id="tab-projects" class="section">
+    <div class="card">
+      <div class="card-title" id="proj-form-title">수주 등록</div>
+      <div style="height:14px"></div>
+      <div class="form-row">
+        <div class="form-group"><label>프로젝트명 *</label><input id="p-name" placeholder="예: LGES SRP"></div>
+        <div class="form-group"><label>발주처</label><input id="p-client" placeholder="예: LG에너지솔루션"></div>
+        <div class="form-group"><label>수주액 (천원) *</label><input id="p-amount" type="number" placeholder="0"></div>
+        <div class="form-group"><label>수주일</label><input id="p-date" type="date"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>부문</label>
+          <select id="p-sector">
+            <option>특수가스</option><option>광학기기</option><option>산업환경</option>
+            <option>석유화학</option><option>탄소저감</option><option>이차전지</option><option>기타</option>
+          </select>
+        </div>
+        <div class="form-group"><label>비고</label><input id="p-note" placeholder="선택 입력"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="addProject()">등록</button>
+        <button class="btn" id="cancel-edit-btn" style="display:none" onclick="cancelEdit()">취소</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">수주 목록</span>
+        <button class="btn btn-export btn-sm" onclick="exportProjects()">엑셀 ↓</button>
+      </div>
+      <div id="project-list"></div>
+    </div>
+  </div>
+
+  <!-- 기성 관리 -->
+  <div id="tab-giseong" class="section">
+    <div class="card">
+      <div class="card-title">기성 등록</div>
+      <div style="height:14px"></div>
+      <div class="form-row">
+        <div class="form-group"><label>프로젝트 *</label><select id="g-project"></select></div>
+        <div class="form-group"><label>기성 년월 *</label><input id="g-ym" type="month"></div>
+        <div class="form-group"><label>기성 청구액 (천원) *</label><input id="g-amount" type="number" placeholder="0"></div>
+        <div class="form-group"><label>비고</label><input id="g-note" placeholder="선택 입력"></div>
+      </div>
+      <button class="btn btn-primary" onclick="addGiseong()">등록</button>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">기성 목록</span>
+        <button class="btn btn-export btn-sm" onclick="exportGiseong()">엑셀 ↓</button>
+      </div>
+      <div id="giseong-list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let editingId = null;
+function loadData() {
+  try { return JSON.parse(localStorage.getItem('epc_mgmt') || '{"projects":[],"giseong":[]}'); }
+  catch(e) { return {projects:[],giseong:[]}; }
+}
+function saveData(d) { localStorage.setItem('epc_mgmt', JSON.stringify(d)); }
+function fmt(n) { return Number(n).toLocaleString(); }
+function today() { return new Date().toISOString().slice(0,10); }
+
+function switchTab(t) {
+  document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',['dashboard','projects','giseong'][i]===t));
+  document.querySelectorAll('.section').forEach(el=>el.classList.remove('active'));
+  document.getElementById('tab-'+t).classList.add('active');
+  if(t==='dashboard') renderDashboard();
+  if(t==='projects') renderProjects();
+  if(t==='giseong'){renderGiseongForm();renderGiseong();}
+}
+
+function renderMonthlyTable(monthly, id) {
+  const el = document.getElementById(id);
+  const months = Object.keys(monthly).sort().slice(-12);
+  if(!months.length){el.innerHTML='<div class="empty">데이터 없음</div>';return;}
+  const total = months.reduce((s,m)=>s+monthly[m],0);
+  el.innerHTML=`<table>
+    <thead><tr><th>년월</th><th style="text-align:right">금액 (천원)</th></tr></thead>
+    <tbody>
+      ${months.map(m=>`<tr><td>${m}</td><td style="text-align:right">${fmt(monthly[m])}</td></tr>`).join('')}
+      <tr class="total-row"><td>합계</td><td style="text-align:right">${fmt(total)}</td></tr>
+    </tbody></table>`;
+}
+
+function renderDashboard() {
+  const d = loadData();
+  const totalSuju = d.projects.reduce((s,p)=>s+Number(p.amount),0);
+  const totalGs = d.giseong.reduce((s,g)=>s+Number(g.amount),0);
+  const balance = totalSuju - totalGs;
+  document.getElementById('metrics').innerHTML=`
+    <div class="metric"><div class="metric-label">총 수주액 (천원)</div><div class="metric-value blue">${fmt(totalSuju)}</div></div>
+    <div class="metric"><div class="metric-label">총 기성 청구액 (천원)</div><div class="metric-value green">${fmt(totalGs)}</div></div>
+    <div class="metric"><div class="metric-label">수주잔고 (천원)</div><div class="metric-value amber">${fmt(balance)}</div></div>
+    <div class="metric"><div class="metric-label">진행 프로젝트 수</div><div class="metric-value">${d.projects.length}</div></div>`;
+
+  const sujuM={};
+  d.projects.forEach(p=>{const ym=(p.date||'').slice(0,7);if(ym)sujuM[ym]=(sujuM[ym]||0)+Number(p.amount);});
+  renderMonthlyTable(sujuM,'monthly-suju-wrap');
+  const gsM={};
+  d.giseong.forEach(g=>{gsM[g.ym]=(gsM[g.ym]||0)+Number(g.amount);});
+  renderMonthlyTable(gsM,'monthly-giseong-wrap');
+
+  const byP={};
+  d.projects.forEach(p=>{byP[p.id]={name:p.name,amount:Number(p.amount),giseong:0};});
+  d.giseong.forEach(g=>{if(byP[g.projectId])byP[g.projectId].giseong+=Number(g.amount);});
+  const rows=Object.values(byP);
+  document.getElementById('balance-table-wrap').innerHTML=!rows.length?'<div class="empty">등록된 프로젝트가 없습니다</div>':`
+    <table>
+      <thead><tr><th>프로젝트명</th><th style="text-align:right">수주액</th><th style="text-align:right">기성 누계</th><th style="text-align:right">잔고</th><th style="width:100px">진행률</th></tr></thead>
+      <tbody>${rows.map(r=>{
+        const ratio=r.amount>0?Math.min(100,Math.round(r.giseong/r.amount*100)):0;
+        return `<tr><td>${r.name}</td><td style="text-align:right">${fmt(r.amount)}</td><td style="text-align:right">${fmt(r.giseong)}</td><td style="text-align:right">${fmt(r.amount-r.giseong)}</td>
+          <td><span style="font-size:11px;color:var(--text2)">${ratio}%</span><div class="ratio-bar"><div class="ratio-fill" style="width:${ratio}%"></div></div></td></tr>`;
+      }).join('')}</tbody></table>`;
+}
+
+function addProject() {
+  const d=loadData();
+  const name=document.getElementById('p-name').value.trim();
+  const client=document.getElementById('p-client').value.trim();
+  const amount=document.getElementById('p-amount').value;
+  const date=document.getElementById('p-date').value;
+  const sector=document.getElementById('p-sector').value;
+  const note=document.getElementById('p-note').value.trim();
+  if(!name||!amount){alert('프로젝트명과 수주액은 필수입니다.');return;}
+  if(editingId){
+    const idx=d.projects.findIndex(p=>p.id===editingId);
+    if(idx!==-1)d.projects[idx]={...d.projects[idx],name,client,amount:Number(amount),date,sector,note};
+    editingId=null;
+    document.getElementById('cancel-edit-btn').style.display='none';
+    document.getElementById('proj-form-title').textContent='수주 등록';
+  } else {
+    d.projects.push({id:Date.now().toString(),name,client,amount:Number(amount),date:date||today(),sector,note});
+  }
+  saveData(d);
+  ['p-name','p-client','p-amount','p-date','p-note'].forEach(id=>document.getElementById(id).value='');
+  renderProjects();
+}
+function editProject(id){
+  const d=loadData();const p=d.projects.find(x=>x.id===id);if(!p)return;
+  editingId=id;
+  document.getElementById('p-name').value=p.name;
+  document.getElementById('p-client').value=p.client||'';
+  document.getElementById('p-amount').value=p.amount;
+  document.getElementById('p-date').value=p.date||'';
+  document.getElementById('p-sector').value=p.sector||'특수가스';
+  document.getElementById('p-note').value=p.note||'';
+  document.getElementById('cancel-edit-btn').style.display='';
+  document.getElementById('proj-form-title').textContent='수주 수정';
+  window.scrollTo(0,0);
+}
+function cancelEdit(){
+  editingId=null;
+  document.getElementById('cancel-edit-btn').style.display='none';
+  document.getElementById('proj-form-title').textContent='수주 등록';
+  ['p-name','p-client','p-amount','p-date','p-note'].forEach(id=>document.getElementById(id).value='');
+}
+function deleteProject(id){
+  if(!confirm('이 프로젝트를 삭제할까요? 관련 기성 데이터도 함께 삭제됩니다.'))return;
+  const d=loadData();
+  d.projects=d.projects.filter(p=>p.id!==id);
+  d.giseong=d.giseong.filter(g=>g.projectId!==id);
+  saveData(d);renderProjects();
+}
+function renderProjects(){
+  const d=loadData();const el=document.getElementById('project-list');
+  if(!d.projects.length){el.innerHTML='<div class="empty">등록된 프로젝트가 없습니다</div>';return;}
+  el.innerHTML=`<table>
+    <thead><tr><th>프로젝트명</th><th>발주처</th><th>부문</th><th style="text-align:right">수주액 (천원)</th><th>수주일</th><th style="width:80px"></th></tr></thead>
+    <tbody>${d.projects.map(p=>`<tr>
+      <td>${p.name}</td><td>${p.client||'-'}</td>
+      <td><span class="tag tag-blue">${p.sector||'-'}</span></td>
+      <td style="text-align:right">${fmt(p.amount)}</td><td>${p.date||'-'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="editProject('${p.id}')">수정</button>
+        <button class="btn-del" onclick="deleteProject('${p.id}')">삭제</button>
+      </td></tr>`).join('')}</tbody></table>`;
+}
+function renderGiseongForm(){
+  const d=loadData();const sel=document.getElementById('g-project');
+  sel.innerHTML=d.projects.length?d.projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join(''):'<option value="">프로젝트 없음</option>';
+}
+function addGiseong(){
+  const d=loadData();
+  const projectId=document.getElementById('g-project').value;
+  const ym=document.getElementById('g-ym').value;
+  const amount=document.getElementById('g-amount').value;
+  const note=document.getElementById('g-note').value.trim();
+  if(!projectId||!ym||!amount){alert('프로젝트, 기성 년월, 기성액은 필수입니다.');return;}
+  d.giseong.push({id:Date.now().toString(),projectId,ym,amount:Number(amount),note});
+  saveData(d);
+  document.getElementById('g-ym').value='';
+  document.getElementById('g-amount').value='';
+  document.getElementById('g-note').value='';
+  renderGiseong();
+}
+function deleteGiseong(id){
+  if(!confirm('이 기성 내역을 삭제할까요?'))return;
+  const d=loadData();d.giseong=d.giseong.filter(g=>g.id!==id);saveData(d);renderGiseong();
+}
+function renderGiseong(){
+  const d=loadData();const el=document.getElementById('giseong-list');
+  if(!d.giseong.length){el.innerHTML='<div class="empty">등록된 기성이 없습니다</div>';return;}
+  const pMap={};d.projects.forEach(p=>pMap[p.id]=p.name);
+  const sorted=[...d.giseong].sort((a,b)=>b.ym.localeCompare(a.ym));
+  el.innerHTML=`<table>
+    <thead><tr><th>프로젝트</th><th>기성 년월</th><th style="text-align:right">기성 청구액 (천원)</th><th>비고</th><th style="width:50px"></th></tr></thead>
+    <tbody>${sorted.map(g=>`<tr>
+      <td>${pMap[g.projectId]||'(삭제됨)'}</td><td>${g.ym}</td>
+      <td style="text-align:right">${fmt(g.amount)}</td><td>${g.note||'-'}</td>
+      <td><button class="btn-del" onclick="deleteGiseong('${g.id}')">삭제</button></td></tr>`).join('')}</tbody></table>`;
+}
+
+function xlsxDown(wb,name){XLSX.writeFile(wb,name);}
+function exportProjects(){
+  const d=loadData();
+  const rows=d.projects.map(p=>({'프로젝트명':p.name,'발주처':p.client||'','부문':p.sector||'','수주액(천원)':p.amount,'수주일':p.date||'','비고':p.note||''}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'수주목록');xlsxDown(wb,'수주목록.xlsx');
+}
+function exportGiseong(){
+  const d=loadData();const pMap={};d.projects.forEach(p=>pMap[p.id]=p.name);
+  const rows=[...d.giseong].sort((a,b)=>b.ym.localeCompare(a.ym)).map(g=>({'프로젝트명':pMap[g.projectId]||'(삭제됨)','기성년월':g.ym,'기성청구액(천원)':g.amount,'비고':g.note||''}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'기성목록');xlsxDown(wb,'기성목록.xlsx');
+}
+function exportBalance(){
+  const d=loadData();const byP={};
+  d.projects.forEach(p=>{byP[p.id]={name:p.name,sector:p.sector||'',amount:Number(p.amount),giseong:0};});
+  d.giseong.forEach(g=>{if(byP[g.projectId])byP[g.projectId].giseong+=Number(g.amount);});
+  const rows=Object.values(byP).map(r=>({'프로젝트명':r.name,'부문':r.sector,'수주액(천원)':r.amount,'기성누계(천원)':r.giseong,'수주잔고(천원)':r.amount-r.giseong,'진행률(%)':r.amount>0?Math.round(r.giseong/r.amount*100):0}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'수주잔고');xlsxDown(wb,'수주잔고현황.xlsx');
+}
+function exportMonthly(type){
+  const d=loadData();const m={};
+  if(type==='suju'){d.projects.forEach(p=>{const ym=(p.date||'').slice(0,7);if(ym)m[ym]=(m[ym]||0)+Number(p.amount);});}
+  else{d.giseong.forEach(g=>{m[g.ym]=(m[g.ym]||0)+Number(g.amount);});}
+  const rows=Object.keys(m).sort().map(k=>({'년월':k,'금액(천원)':m[k]}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),type==='suju'?'월별수주':'월별기성');
+  xlsxDown(wb,type==='suju'?'월별수주현황.xlsx':'월별기성현황.xlsx');
+}
+
+renderDashboard();
+</script>
+</body>
+</html>
